@@ -20,12 +20,12 @@ icon: Boxes
 | **Scheme**        | `https` (پیش‌فرض) یا `http`.                                          |
 | **Address / Port**| میزبان و پورت پنل نود.                                                 |
 | **Base path**     | مسیر پایهٔ وب نود.                                                     |
-| **API token**     | یک توکن Bearer که روی نود ساخته می‌شود (در حالت mTLS لازم نیست).        |
+| **API token**     | یک توکن Bearer که روی نود ساخته می‌شود (در حالت mTLS اختیاری است، به‌جز **به‌روزرسانی پنل** که به توکن `node-admin` نیاز دارد). |
 | **TLS verify**    | `verify` (پیش‌فرض)، `skip`، `pin` (پین‌کردن SHA-256 گواهی) یا `mtls`.  |
 | **Inbound sync**  | همهٔ inboundها (`all`) یا انتخاب‌شده (`selected`) بر اساس تگ.          |
 | **Outbound tag**  | به‌اختیار از طریق یک outbound نام‌دار به نود برسید (پل خروجی).         |
 
-مستر هنگام افزودن یا آزمودن یک نود، قابلیت دسترسی به آن را بررسی می‌کند. سپس هر چند ثانیه یک **ضربان قلب (heartbeat)** ارسال می‌کند، وضعیت نود را به‌روزرسانی می‌کند (`online` / `offline`) و رویدادهای `node.up` / `node.down` را منتشر می‌کند (به [بات Telegram](/docs/operations/telegram-bot) مراجعه کنید).
+مستر هنگام افزودن یا آزمودن یک نود، قابلیت دسترسی به آن را بررسی می‌کند. سپس هر چند ثانیه یک **ضربان قلب (heartbeat)** ارسال می‌کند، وضعیت نود را به‌روزرسانی می‌کند (`online` / `offline`) و رویدادهای `node.up` / `node.down` را منتشر می‌کند (به [بات Telegram](/docs/operations/telegram-bot) و [بات Discord](/docs/operations/discord-bot) مراجعه کنید).
 
 <Callout type="info">
   نودها با یک GUID پایدار به‌ازای هر پنل شناسایی می‌شوند، بنابراین یک نود هویت خود
@@ -59,6 +59,14 @@ icon: Boxes
 
 حالت TLS verify نود را روی `mtls` تنظیم کنید. اکنون مستر به‌جای یک توکن API یک
 گواهی کلاینت ارائه می‌دهد.
+
+<Callout type="warn">
+  نودی که بدون توکن و از طریق mTLS متصل شده فقط دامنهٔ `node-sync` را دارد و نمی‌تواند
+  **به‌روزرسانی پنل** را اجرا کند (نود پاسخ HTTP 403 با پیام
+  «this API token is not permitted to access this endpoint» می‌دهد). برای به‌روزرسانی
+  چنین نودی از مستر، روی نود یک توکن API با دامنهٔ `node-admin` بسازید و آن را در
+  فیلد **API token** همان نود در مستر وارد کنید. حالت TLS verify را روی `mtls` نگه دارید.
+</Callout>
 </Step>
 
 </Steps>

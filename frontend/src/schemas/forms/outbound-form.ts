@@ -6,13 +6,13 @@ import { VmessSecuritySchema } from '@/schemas/protocols/shared/vmess';
 import { SecuritySettingsSchema } from '@/schemas/protocols/security';
 import { NetworkSettingsSchema, StreamExtrasSchema } from '@/schemas/protocols/stream';
 import {
+  AmneziaWGOutboundSettingsSchema,
   BlackholeResponseTypeSchema,
   DNSRuleActionSchema,
   FreedomFinalRuleActionSchema,
   FreedomFragmentSchema,
   FreedomNoiseSchema,
   OutboundDomainStrategySchema,
-  WireguardDomainStrategySchema,
 } from '@/schemas/protocols/outbound';
 
 export const VmessOutboundFormSettingsSchema = z.object({
@@ -104,13 +104,17 @@ export const WireguardOutboundFormSettingsSchema = z.object({
   secretKey: z.string().default(''),
   pubKey: z.string().default(''),
   address: z.string().default(''),
-  domainStrategy: z.union([WireguardDomainStrategySchema, z.literal('')]).default(''),
   reserved: z.string().default(''),
   remoteDNS: z.string().default(''),
   peers: z.array(WireguardOutboundFormPeerSchema).default([]),
   noKernelTun: z.boolean().default(false),
 });
 export type WireguardOutboundFormSettings = z.infer<typeof WireguardOutboundFormSettingsSchema>;
+
+// Re-export under the form name: the form state IS the wire shape (flat
+// obfuscation fields, same as the inbound server block), so no rename layer.
+export const AmneziaWGOutboundFormSettingsSchema = AmneziaWGOutboundSettingsSchema;
+export type AmneziaWGOutboundFormSettings = z.infer<typeof AmneziaWGOutboundFormSettingsSchema>;
 
 // Hysteria outbound carries the connect target only; transport-layer knobs
 // (auth, congestion, up/down, hop port, timeouts) ride on stream.hysteria.
@@ -121,15 +125,22 @@ export const HysteriaOutboundFormSettingsSchema = z.object({
 });
 export type HysteriaOutboundFormSettings = z.infer<typeof HysteriaOutboundFormSettingsSchema>;
 
-// FinalRule (freedom): network/port are strings; ip is string[]; blockDelay
-// is only meaningful when action === 'block'. The adapter omits empty
-// fields from the wire payload.
+export const MasqueOutboundFormSettingsSchema = z.object({
+  address: z.string().default(''),
+  port: PortSchema.default(443),
+  remoteDNS: z.array(z.string()).default([]),
+});
+export type MasqueOutboundFormSettings = z.infer<typeof MasqueOutboundFormSettingsSchema>;
+
+// FinalRule (freedom): the core refuses delay and logLevel on a rule whose
+// action is not 'block' (xray-core 26.11.9), so the adapter drops them there.
 export const FreedomFinalRuleFormSchema = z.object({
   action: FreedomFinalRuleActionSchema.default('block'),
   network: z.string().default(''),
   port: z.string().default(''),
   ip: z.array(z.string()).default([]),
-  blockDelay: z.string().default(''),
+  delay: z.string().default(''),
+  logLevel: z.string().default(''),
 });
 export type FreedomFinalRuleForm = z.infer<typeof FreedomFinalRuleFormSchema>;
 
@@ -194,7 +205,9 @@ export const OutboundFormSettingsSchema = z.discriminatedUnion('protocol', [
   z.object({ protocol: z.literal('socks'), settings: SocksOutboundFormSettingsSchema }),
   z.object({ protocol: z.literal('http'), settings: HttpOutboundFormSettingsSchema }),
   z.object({ protocol: z.literal('wireguard'), settings: WireguardOutboundFormSettingsSchema }),
+  z.object({ protocol: z.literal('amneziawg'), settings: AmneziaWGOutboundFormSettingsSchema }),
   z.object({ protocol: z.literal('hysteria'), settings: HysteriaOutboundFormSettingsSchema }),
+  z.object({ protocol: z.literal('masque'), settings: MasqueOutboundFormSettingsSchema }),
   z.object({ protocol: z.literal('freedom'), settings: FreedomOutboundFormSettingsSchema }),
   z.object({ protocol: z.literal('blackhole'), settings: BlackholeOutboundFormSettingsSchema }),
   z.object({ protocol: z.literal('dns'), settings: DnsOutboundFormSettingsSchema }),

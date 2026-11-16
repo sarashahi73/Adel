@@ -5,7 +5,6 @@ import (
 	"net/netip"
 	"strings"
 
-	awgconn "github.com/amnezia-vpn/amneziawg-go/v3/conn"
 	"github.com/amnezia-vpn/amneziawg-go/v3/device"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 
@@ -69,7 +68,14 @@ type DeviceOptions struct {
 type Device struct {
 	*device.Device
 	Stack *stack.Stack
+
+	// localAddrs snapshots the netstack interface addresses (gVisor exposes
+	// no read-back); set once at construction, read-only afterwards.
+	localAddrs []netip.Addr
 }
+
+// LocalAddresses returns the configured tunnel-local address(es).
+func (d *Device) LocalAddresses() []netip.Addr { return d.localAddrs }
 
 // NewDevice constructs, configures, and brings up an embedded AmneziaWG
 // interface for inst in one call: a gVisor-backed tun.Device sized to
@@ -128,9 +134,10 @@ func newUnconfiguredDevice(inst amneziawg.Instance, opts DeviceOptions) (*Device
 	if logger == nil {
 		logger = device.NewLogger(device.LogLevelSilent, "")
 	}
-	dev := device.NewDevice(tun, awgconn.NewDefaultBind(), logger)
+	bind := newResolvingBind(inst.Listen)
+	dev := device.NewDevice(tun, bind, logger)
 
-	return &Device{Device: dev, Stack: gstack}, nil
+	return &Device{Device: dev, Stack: gstack, localAddrs: addrs}, nil
 }
 
 // Configure applies inst/opts to d via UAPI and brings the interface up.
@@ -192,6 +199,10 @@ func buildUAPIConfig(inst amneziawg.Instance, opts DeviceOptions) (string, error
 	// dropped instead of lingering from a previous IpcSet call.
 	b.WriteString("replace_peers=true\n")
 
+	// Rows saved before these bounds existed would allocate without limit per handshake.
+	if err := amneziawg.ValidateHandshakePreamble(inst.Obfuscation); err != nil {
+		return "", err
+	}
 	o := inst.Obfuscation
 	fmt.Fprintf(&b, "jc=%d\njmin=%d\njmax=%d\n", o.Jc, o.Jmin, o.Jmax)
 	fmt.Fprintf(&b, "s1=%d\ns2=%d\ns3=%d\ns4=%d\n", o.S1, o.S2, o.S3, o.S4)

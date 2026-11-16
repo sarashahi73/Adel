@@ -1,9 +1,12 @@
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AutoComplete, Button, Form, Input, InputNumber, Select, Switch } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useFieldArray, useFormContext, useWatch } from 'react-hook-form';
 
+import { selectTagRender } from '@/components/form';
 import { FormField } from '@/components/form/rhf';
+import { LOG_LEVELS } from '@/pages/xray/basics/constants';
 import { activateOnKey } from '@/utils/a11y';
 import { OutboundDomainStrategies } from '@/schemas/primitives';
 
@@ -16,6 +19,7 @@ interface FragmentValue {
 
 export default function FreedomFields() {
   const { t } = useTranslation();
+  const uid = useId();
   const { control, setValue } = useFormContext();
 
   const fragment = (useWatch({ control, name: 'settings.fragment' }) ?? {}) as FragmentValue;
@@ -68,8 +72,9 @@ export default function FreedomFields() {
         />
       </FormField>
 
-      <Form.Item label="Fragment">
+      <Form.Item label="Fragment" htmlFor={`${uid}-fragment`}>
         <Switch
+          id={`${uid}-fragment`}
           checked={fragmentEnabled}
           onChange={(checked) => {
             setValue(
@@ -130,8 +135,9 @@ export default function FreedomFields() {
         </>
       )}
 
-      <Form.Item label={t('pages.settings.subFormats.noises')}>
+      <Form.Item label={t('pages.settings.subFormats.noises')} htmlFor={`${uid}-noises`}>
         <Switch
+          id={`${uid}-noises`}
           checked={noiseFields.length > 0}
           onChange={(checked) => {
             if (checked) {
@@ -146,7 +152,7 @@ export default function FreedomFields() {
             size="small"
             type="primary"
             className="ml-8"
-            icon={<PlusOutlined />}
+            icon={<PlusOutlined aria-hidden />}
             aria-label={t('add')}
             onClick={() =>
               appendNoise({ type: 'rand', packet: '10-20', delay: '10-16', applyTo: 'ip' })
@@ -212,10 +218,17 @@ export default function FreedomFields() {
         <Button
           size="small"
           type="primary"
-          icon={<PlusOutlined />}
+          icon={<PlusOutlined aria-hidden />}
           aria-label={t('add')}
           onClick={() =>
-            appendFinalRule({ action: 'allow', network: '', port: '', ip: [], blockDelay: '' })
+            appendFinalRule({
+              action: 'allow',
+              network: '',
+              port: '',
+              ip: [],
+              delay: '',
+              logLevel: '',
+            })
           }
         />
         <span className="ml-8" style={{ opacity: 0.6 }}>
@@ -270,17 +283,30 @@ export default function FreedomFields() {
           <FormField label="IP / CIDR / geoip" name={['settings', 'finalRules', index, 'ip']}>
             <Select
               mode="tags"
+              tagRender={selectTagRender}
               tokenSeparators={[',', ' ']}
               placeholder="e.g. 10.0.0.0/8, geoip:private"
             />
           </FormField>
           {finalRulesValues[index]?.action === 'block' && (
-            <FormField
-              label={t('pages.xray.outboundForm.blockDelay')}
-              name={['settings', 'finalRules', index, 'blockDelay']}
-            >
-              <Input placeholder="optional: 5000-10000" />
-            </FormField>
+            <>
+              <FormField
+                label={t('pages.xray.outboundForm.blockDelay')}
+                name={['settings', 'finalRules', index, 'delay']}
+              >
+                <Input placeholder="optional: 5000-10000" />
+              </FormField>
+              <FormField
+                label={t('pages.xray.logLevel')}
+                name={['settings', 'finalRules', index, 'logLevel']}
+              >
+                <Select
+                  allowClear
+                  placeholder="info"
+                  options={LOG_LEVELS.map((v) => ({ value: v, label: v }))}
+                />
+              </FormField>
+            </>
           )}
         </div>
       ))}

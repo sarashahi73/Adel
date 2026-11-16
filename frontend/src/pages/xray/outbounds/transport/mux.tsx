@@ -9,12 +9,12 @@ import { isMuxAllowed } from '../outbound-form-helpers';
 interface MuxFormProps {
   protocol: string;
   network: string;
+  flow?: string;
 }
 
-export default function MuxForm({ protocol, network }: MuxFormProps) {
+export default function MuxForm({ protocol, network, flow = '' }: MuxFormProps) {
   const { t } = useTranslation();
   const { control } = useFormContext();
-  const flow = (useWatch({ control, name: 'settings.flow' }) ?? '') as string;
   const muxEnabled = !!useWatch({ control, name: 'mux.enabled' });
   if (!isMuxAllowed(protocol, flow, network)) return null;
   return (
@@ -26,6 +26,7 @@ export default function MuxForm({ protocol, network }: MuxFormProps) {
         <>
           <FormField
             label={t('pages.settings.subFormats.concurrency')}
+            tooltip={t('pages.settings.subFormats.concurrencyHint')}
             name={['mux', 'concurrency']}
           >
             <InputNumber min={-1} max={1024} />

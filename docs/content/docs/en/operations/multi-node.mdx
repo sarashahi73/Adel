@@ -23,7 +23,7 @@ Provide the node's connection details:
 | **Scheme**        | `https` (default) or `http`.                                          |
 | **Address / Port**| The node panel's host and port.                                       |
 | **Base path**     | The node's web base path.                                             |
-| **API token**     | A Bearer token created on the node (not needed in mTLS mode).         |
+| **API token**     | A Bearer token created on the node. Optional in mTLS mode, except for **Update panel** (needs `node-admin`). |
 | **TLS verify**    | `verify` (default), `skip`, `pin` (pin a cert SHA-256), or `mtls`.    |
 | **Inbound sync**  | `all` inbounds, or `selected` by tag.                                 |
 | **Outbound tag**  | Optionally reach the node **through** a named outbound (egress bridge).|
@@ -31,7 +31,7 @@ Provide the node's connection details:
 The master verifies reachability when you add or test a node. It then sends a
 **heartbeat** every few seconds, updating the node's status (`online` / `offline`)
 and emitting `node.up` / `node.down` events (see the
-[Telegram bot](/docs/operations/telegram-bot)).
+[Telegram bot](/docs/operations/telegram-bot) and [Discord bot](/docs/operations/discord-bot)).
 
 <Callout type="info">
   Nodes are identified by a stable per-panel GUID, so a node keeps its identity
@@ -64,6 +64,14 @@ next restart.
 
 Set the node's TLS verify mode to `mtls`. The master now presents a client
 certificate instead of an API token.
+
+<Callout type="warn">
+  A node reached over mTLS without a token only has the `node-sync` scope, which
+  cannot run **Update panel** (the node answers HTTP 403, "this API token is not
+  permitted to access this endpoint"). To update such a node from the master,
+  create an API token with the `node-admin` scope on the node and paste it into
+  the master's **API token** field for that node. Keep TLS verify on `mtls`.
+</Callout>
 </Step>
 
 </Steps>

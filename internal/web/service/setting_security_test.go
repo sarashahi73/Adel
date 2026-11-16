@@ -4,10 +4,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/xlzd/gotp"
 
 	"github.com/mhsanaei/3x-ui/v3/internal/database"
+	"github.com/mhsanaei/3x-ui/v3/internal/database/dbtest"
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 )
 
@@ -51,14 +53,7 @@ func TestResetSettingsRegeneratesSubscriptionPaths(t *testing.T) {
 
 func setupSettingTestDB(t *testing.T) {
 	t.Helper()
-	if err := database.InitDB(filepath.Join(t.TempDir(), "x-ui.db")); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := database.CloseDB(); err != nil {
-			t.Fatal(err)
-		}
-	})
+	dbtest.InitDB(t, filepath.Join(t.TempDir(), "x-ui.db"))
 }
 
 func TestGetAllSettingViewRedactsSecrets(t *testing.T) {
@@ -76,6 +71,9 @@ func TestGetAllSettingViewRedactsSecrets(t *testing.T) {
 	if err := s.saveSetting("smtpPassword", "smtp-secret"); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.saveSetting("discordBotToken", "discord-secret"); err != nil {
+		t.Fatal(err)
+	}
 	if err := database.GetDB().Create(&model.ApiToken{Name: "test", Token: "api-secret", Enabled: true}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -84,10 +82,10 @@ func TestGetAllSettingViewRedactsSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view.TgBotToken != "" || view.TwoFactorToken != "" || view.LdapPassword != "" || view.SmtpPassword != "" {
+	if view.TgBotToken != "" || view.TwoFactorToken != "" || view.LdapPassword != "" || view.SmtpPassword != "" || view.DiscordBotToken != "" {
 		t.Fatalf("settings view leaked secrets: %#v", view)
 	}
-	if !view.HasTgBotToken || !view.HasTwoFactorToken || !view.HasLdapPassword || !view.HasApiToken || !view.HasSmtpPassword {
+	if !view.HasTgBotToken || !view.HasTwoFactorToken || !view.HasLdapPassword || !view.HasApiToken || !view.HasSmtpPassword || !view.HasDiscordBotToken {
 		t.Fatalf("settings view did not report configured secret flags: %#v", view)
 	}
 }
@@ -104,10 +102,13 @@ func TestUpdateAllSettingPreservesRedactedSecrets(t *testing.T) {
 	if err := s.saveSetting("twoFactorEnable", "true"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.saveSetting("twoFactorToken", "totp-secret"); err != nil {
+	if err := s.saveSetting("twoFactorToken", "JBSWY3DPEHPK3PXP"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.saveSetting("smtpPassword", "smtp-secret"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.saveSetting("discordBotToken", "discord-secret"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -125,11 +126,52 @@ func TestUpdateAllSettingPreservesRedactedSecrets(t *testing.T) {
 	if got, _ := s.GetLdapPassword(); got != "ldap-secret" {
 		t.Fatalf("ldap password = %q, want preserved secret", got)
 	}
-	if got, _ := s.GetTwoFactorToken(); got != "totp-secret" {
+	if got, _ := s.GetTwoFactorToken(); got != "JBSWY3DPEHPK3PXP" {
 		t.Fatalf("2fa token = %q, want preserved secret", got)
 	}
 	if got, _ := s.GetSmtpPassword(); got != "smtp-secret" {
 		t.Fatalf("smtp password = %q, want preserved secret", got)
+	}
+	if got, _ := s.GetDiscordBotToken(); got != "discord-secret" {
+		t.Fatalf("discord token = %q, want preserved secret", got)
+	}
+}
+
+// Turning 2FA on stores the secret in the form the TOTP decoder takes, and refuses
+// one that no authenticator code could ever match.
+func TestUpdateAllSettingTwoFactorSecret(t *testing.T) {
+	cases := []struct {
+		name, stored, submitted, want string
+		wantErr                       bool
+	}{
+		{name: "canonical", submitted: "JBSWY3DPEHPK3PXP", want: "JBSWY3DPEHPK3PXP"},
+		{name: "lower case and grouped", submitted: "jbsw y3dp ehpk 3pxp", want: "JBSWY3DPEHPK3PXP"},
+		{name: "redacted keeps stored", stored: "ORIGINALSECRET234567", submitted: "", want: "ORIGINALSECRET234567"},
+		{name: "not base32", stored: "ORIGINALSECRET234567", submitted: "totp-secret", want: "ORIGINALSECRET234567", wantErr: true},
+		{name: "nothing stored", submitted: "", want: "", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setupSettingTestDB(t)
+			s := &SettingService{}
+			if err := s.SetTwoFactorToken(tc.stored); err != nil {
+				t.Fatal(err)
+			}
+			view, err := s.GetAllSettingView()
+			if err != nil {
+				t.Fatal(err)
+			}
+			settings := &view.AllSetting
+			settings.TwoFactorEnable = true
+			settings.TwoFactorToken = tc.submitted
+			err = s.UpdateAllSetting(settings, SecretClears{})
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("UpdateAllSetting error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if got, _ := s.GetTwoFactorToken(); got != tc.want {
+				t.Fatalf("stored 2FA secret = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -143,6 +185,9 @@ func TestUpdateAllSettingClearsFlaggedSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := s.saveSetting("smtpPassword", "smtp-secret"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.saveSetting("discordBotToken", "discord-secret"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -162,6 +207,9 @@ func TestUpdateAllSettingClearsFlaggedSecrets(t *testing.T) {
 	if got, _ := s.GetLdapPassword(); got != "ldap-secret" {
 		t.Fatalf("ldap password = %q, unflagged secret must stay preserved", got)
 	}
+	if got, _ := s.GetDiscordBotToken(); got != "discord-secret" {
+		t.Fatalf("discord token = %q, unflagged secret must stay preserved", got)
+	}
 
 	view, err = s.GetAllSettingView()
 	if err != nil {
@@ -170,7 +218,7 @@ func TestUpdateAllSettingClearsFlaggedSecrets(t *testing.T) {
 	if view.HasSmtpPassword {
 		t.Fatal("hasSmtpPassword must report false after clearing")
 	}
-	if err := s.UpdateAllSetting(&view.AllSetting, SecretClears{TgBotToken: true, LdapPassword: true}); err != nil {
+	if err := s.UpdateAllSetting(&view.AllSetting, SecretClears{TgBotToken: true, LdapPassword: true, DiscordBotToken: true}); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := s.GetTgBotToken(); got != "" {
@@ -178,6 +226,17 @@ func TestUpdateAllSettingClearsFlaggedSecrets(t *testing.T) {
 	}
 	if got, _ := s.GetLdapPassword(); got != "" {
 		t.Fatalf("ldap password = %q, want cleared", got)
+	}
+	if got, _ := s.GetDiscordBotToken(); got != "" {
+		t.Fatalf("discord token = %q, want cleared", got)
+	}
+
+	view, err = s.GetAllSettingView()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.HasDiscordBotToken {
+		t.Fatal("hasDiscordBotToken must report false after clearing")
 	}
 }
 
@@ -203,6 +262,9 @@ func TestVerifyTwoFactorCode(t *testing.T) {
 
 	if err := s.VerifyTwoFactorCode(gotp.NewDefaultTOTP(token).Now()); err != nil {
 		t.Fatalf("valid code rejected: %v", err)
+	}
+	if err := s.VerifyTwoFactorCode(gotp.NewDefaultTOTP(token).AtTime(time.Now().Add(-30 * time.Second))); err != nil {
+		t.Fatalf("previous window code rejected: %v", err)
 	}
 	if err := s.VerifyTwoFactorCode("000000"); err == nil {
 		t.Fatal("invalid code accepted")
